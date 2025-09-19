@@ -1,6 +1,15 @@
+# Python / entorno
 .venv/
+__pycache__/
+
+# Datos/artefactos
 data/
 *.csv
 *.zip
 *.gz
 *.tar
+
+# Entornos/secrets
+.env
+.env.*
+!*.example
