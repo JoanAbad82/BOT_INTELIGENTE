@@ -4,16 +4,16 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 from datetime import timezone
+from pathlib import Path
 from typing import List, Tuple
 
 import pandas as pd
 from loguru import logger
 
+from src.config.settings import settings
 from src.data.ohlcv_downloader import FetchConfig, download_ohlcv
 from src.utils.logging import setup_logging
-from src.config.settings import settings
 
 # ⚠️ OJO: Pandas != CCXT
 DEFAULT_FREQ_PANDAS = "15min"  # ✅ sin FutureWarnings (antes "15T")
@@ -44,9 +44,7 @@ def _ensure_utc_index(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def group_gaps(
-    gaps: pd.DatetimeIndex, freq: str
-) -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
+def group_gaps(gaps: pd.DatetimeIndex, freq: str) -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
     """Agrupa huecos contiguos en rangos [start, end] según el paso `freq`."""
     if len(gaps) == 0:
         return []
@@ -125,13 +123,34 @@ def main() -> None:
     setup_logging("BOT_INTELIGENTE")
     args = _parse_args()
 
-    src_csv = Path(args.csv)
-    if not src_csv.exists():
-        logger.error(f"No existe el archivo de origen: {src_csv}")
+    # --- Normaliza freq para admitir '15T' -> '15min'
+    import re
+
+    freq = args.freq
+    m = re.fullmatch(r"(\d+)T", str(freq).strip(), flags=re.IGNORECASE)
+    if m:
+        freq = f"{m.group(1)}min"
+
+    # --- Resolución de rutas y construcción del nombre de salida SIN duplicar sufijo
+    in_path = Path(args.csv)
+    if not in_path.exists():
+        logger.error(f"No existe el archivo de origen: {in_path}")
         raise SystemExit(2)
 
+    suffix = args.suffix or "_filled"
+    ext = in_path.suffix or ".csv"
+    # si el input ya termina en ese sufijo, no lo volvemos a añadir
+    if in_path.stem.endswith(suffix):
+        out_name = in_path.name  # mismo nombre (con su extensión)
+    else:
+        out_name = f"{in_path.stem}{suffix}{ext}"
+
+    outdir = Path(args.outdir) if args.outdir else in_path.parent
+    outdir.mkdir(parents=True, exist_ok=True)
+    out_path = outdir / out_name
+
     # Carga robusta y normalización del índice a UTC
-    df = pd.read_csv(src_csv, parse_dates=["datetime"], index_col="datetime")
+    df = pd.read_csv(in_path, parse_dates=["datetime"], index_col="datetime")
     df = _ensure_utc_index(df)
 
     # === Validaciones de entrada (contrato de columnas y tz) ===
@@ -145,23 +164,16 @@ def main() -> None:
         raise SystemExit(2)
 
     # Construye el rango completo esperado a la frecuencia indicada (Pandas)
-    freq = args.freq
     full = pd.date_range(df.index.min(), df.index.max(), freq=freq, tz="UTC")
     gaps = full.difference(df.index)
 
     logger.info(f"Huecos detectados: {len(gaps)}")
-    # Determina ruta de salida
-    outdir = Path(args.outdir) if args.outdir else src_csv.parent
-    outdir.mkdir(parents=True, exist_ok=True)
-    out_path = outdir / (src_csv.stem + args.suffix + src_csv.suffix)
 
     if len(gaps) == 0:
         logger.info("Nada que rellenar.")
         # Exportamos una versión canónica/ordenada por consistencia
         numeric_cols = ["open", "high", "low", "close", "volume"]
-        df[numeric_cols] = (
-            df[numeric_cols].apply(pd.to_numeric, errors="coerce").astype("float64")
-        )
+        df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce").astype("float64")
         df.to_csv(out_path, index=True)
         logger.info(f"Guardado dataset (sin cambios) en: {out_path}")
         print(out_path)
@@ -186,8 +198,6 @@ def main() -> None:
             timeframe=args.timeframe,
             since=since,
             until=until,
-            # El downloader gestionará su propia carpeta RAW/FINAL; no imponemos outdir aquí
-            # para no mezclar parches con el dataset principal salvo necesidad.
         )
         part_path = download_ohlcv(cfg)
         part = pd.read_csv(part_path, parse_dates=["datetime"], index_col="datetime")
