@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+
 from dotenv import load_dotenv
 
 # Carga el .env en la raíz del proyecto
@@ -27,9 +28,7 @@ class Settings:
     default_symbol: str = os.getenv("DEFAULT_SYMBOL", "XRP/USDC").strip().upper()
 
     # Opciones de conexión
-    enable_rate_limit: bool = (
-        os.getenv("ENABLE_RATE_LIMIT", "true").strip().lower() == "true"
-    )
+    enable_rate_limit: bool = os.getenv("ENABLE_RATE_LIMIT", "true").strip().lower() == "true"
     timeout_ms: int = int(os.getenv("TIMEOUT_MS", "20000"))
     sandbox_mode: bool = os.getenv("SANDBOX_MODE", "true").strip().lower() == "true"
 

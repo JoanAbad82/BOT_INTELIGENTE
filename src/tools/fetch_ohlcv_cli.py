@@ -3,19 +3,19 @@
 # ==========================================
 from __future__ import annotations
 
+import argparse
 import re
 import sys
-import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from ccxt.base.errors import ExchangeError, NetworkError, RequestTimeout
 from loguru import logger
-from ccxt.base.errors import NetworkError, ExchangeError, RequestTimeout
 
+from src.config.settings import settings
 from src.data.ohlcv_downloader import FetchConfig, download_ohlcv
 from src.utils.logging import setup_logging
-from src.config.settings import settings
 
 
 # ---------------------------

@@ -1,7 +1,9 @@
 from __future__ import annotations
-from loguru import logger
-from pathlib import Path
+
 import sys
+from pathlib import Path
+
+from loguru import logger
 
 
 def setup_logging(app_name: str = "BOT_INTELIGENTE") -> None:
@@ -11,6 +13,4 @@ def setup_logging(app_name: str = "BOT_INTELIGENTE") -> None:
 
     logger.remove()  # limpia handlers por si se llama 2 veces
     logger.add(sys.stdout, level="INFO", enqueue=True)
-    logger.add(
-        log_file, level="DEBUG", rotation="10 MB", retention="14 days", enqueue=True
-    )
+    logger.add(log_file, level="DEBUG", rotation="10 MB", retention="14 days", enqueue=True)

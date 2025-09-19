@@ -11,10 +11,10 @@ from typing import List
 
 import ccxt
 from ccxt.base.errors import (
-    NetworkError,
-    ExchangeError,
-    RequestTimeout,
     AuthenticationError,
+    ExchangeError,
+    NetworkError,
+    RequestTimeout,
 )
 from dotenv import load_dotenv
 
@@ -124,9 +124,7 @@ def main() -> None:
         server_ms = ex.fetch_time()
         local_ms = int(time.time() * 1000)
         drift_ms = int(server_ms - local_ms)
-        print(
-            f"[OK] fetch_time | server={server_ms} local={local_ms} drift={drift_ms} ms"
-        )
+        print(f"[OK] fetch_time | server={server_ms} local={local_ms} drift={drift_ms} ms")
 
         # 3) Carga de mercados
         ex.load_markets(reload=True)
