@@ -23,3 +23,13 @@ repos:
       - id: check-ast
       - id: mixed-line-ending
       - id: fix-byte-order-marker
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: block-dotenv
+        name: block committing .env files
+        entry: "ERROR: .env files must not be committed"
+        language: fail
+        files: '^\.env(|\..*)$'
+        exclude: '^\.env\.example$'
