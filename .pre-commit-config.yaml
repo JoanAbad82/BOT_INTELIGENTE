@@ -13,7 +13,7 @@ repos:
         exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
         exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
