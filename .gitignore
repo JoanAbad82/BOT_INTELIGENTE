@@ -1,0 +1,6 @@
+.venv/
+data/
+*.csv
+*.zip
+*.gz
+*.tar

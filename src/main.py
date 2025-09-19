@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 # ==================================
 # ========== FILE: src/main.py
 # ==================================
@@ -124,7 +124,9 @@ def main() -> None:
         server_ms = ex.fetch_time()
         local_ms = int(time.time() * 1000)
         drift_ms = int(server_ms - local_ms)
-        print(f"[OK] fetch_time | server={server_ms} local={local_ms} drift={drift_ms} ms")
+        print(
+            f"[OK] fetch_time | server={server_ms} local={local_ms} drift={drift_ms} ms"
+        )
 
         # 3) Carga de mercados
         ex.load_markets(reload=True)
