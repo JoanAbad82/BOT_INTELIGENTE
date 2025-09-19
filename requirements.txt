@@ -1,0 +1,4 @@
+ccxt==4.4.59
+python-dotenv==1.0.1
+pandas==2.2.2
+loguru==0.7.2
