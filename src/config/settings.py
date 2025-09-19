@@ -18,6 +18,7 @@ class Settings:
     Configuración del proyecto BOT_INTELIGENTE.
     Regla clave: el símbolo por defecto DEBE ser BASE/USDC (quote fijo en USDC).
     """
+
     # Claves de API (testnet)
     binance_testnet_api_key: str = os.getenv("BINANCE_TESTNET_API_KEY", "")
     binance_testnet_api_secret: str = os.getenv("BINANCE_TESTNET_API_SECRET", "")
@@ -26,7 +27,9 @@ class Settings:
     default_symbol: str = os.getenv("DEFAULT_SYMBOL", "XRP/USDC").strip().upper()
 
     # Opciones de conexión
-    enable_rate_limit: bool = os.getenv("ENABLE_RATE_LIMIT", "true").strip().lower() == "true"
+    enable_rate_limit: bool = (
+        os.getenv("ENABLE_RATE_LIMIT", "true").strip().lower() == "true"
+    )
     timeout_ms: int = int(os.getenv("TIMEOUT_MS", "20000"))
     sandbox_mode: bool = os.getenv("SANDBOX_MODE", "true").strip().lower() == "true"
 

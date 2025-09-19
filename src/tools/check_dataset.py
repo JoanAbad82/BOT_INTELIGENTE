@@ -44,9 +44,9 @@ def _validate_ohlc_sanity(df: pd.DataFrame) -> None:
       - high >= max(open, close, low)
       - volume >= 0
     """
-    lows_ok = (df["low"] <= df[["open", "close", "high"]].min(axis=1))
-    highs_ok = (df["high"] >= df[["open", "close", "low"]].max(axis=1))
-    vols_ok = (df["volume"] >= 0)
+    lows_ok = df["low"] <= df[["open", "close", "high"]].min(axis=1)
+    highs_ok = df["high"] >= df[["open", "close", "low"]].max(axis=1)
+    vols_ok = df["volume"] >= 0
     if not (lows_ok.all() and highs_ok.all() and vols_ok.all()):
         raise ValueError("Sanidad OHLC/volumen fallida (low/high/volume incoherentes).")
 
@@ -55,8 +55,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description="Valida un dataset OHLCV a una frecuencia fija (duplicados/huecos/completitud) y, opcionalmente, sanidad OHLC/volumen."
     )
-    ap.add_argument("csv_path", help="Ruta al CSV con columna 'datetime' (índice o columna).")
-    ap.add_argument("--freq", default="15min", help="Frecuencia esperada (p. ej. '15min', '1H').")
+    ap.add_argument(
+        "csv_path", help="Ruta al CSV con columna 'datetime' (índice o columna)."
+    )
+    ap.add_argument(
+        "--freq", default="15min", help="Frecuencia esperada (p. ej. '15min', '1H')."
+    )
     ap.add_argument(
         "--sanity-ohlc",
         action="store_true",
