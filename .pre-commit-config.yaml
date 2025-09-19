@@ -1,0 +1,25 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix]
+        exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
+
+  - repo: https://github.com/psf/black
+    rev: 24.8.0
+    hooks:
+      - id: black
+        exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: end-of-file-fixer
+        exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
+      - id: trailing-whitespace
+        exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
+      - id: check-yaml
+      - id: check-ast
+      - id: mixed-line-ending
+      - id: fix-byte-order-marker

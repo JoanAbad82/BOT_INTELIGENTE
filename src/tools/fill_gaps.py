@@ -17,7 +17,7 @@ from src.config.settings import settings
 
 # ⚠️ OJO: Pandas != CCXT
 DEFAULT_FREQ_PANDAS = "15min"  # ✅ sin FutureWarnings (antes "15T")
-DEFAULT_TF_CCXT = "15m"        # CCXT usa sufijo 'm'
+DEFAULT_TF_CCXT = "15m"  # CCXT usa sufijo 'm'
 
 
 # ---------------------------
@@ -44,7 +44,9 @@ def _ensure_utc_index(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def group_gaps(gaps: pd.DatetimeIndex, freq: str) -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
+def group_gaps(
+    gaps: pd.DatetimeIndex, freq: str
+) -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
     """Agrupa huecos contiguos en rangos [start, end] según el paso `freq`."""
     if len(gaps) == 0:
         return []
@@ -157,7 +159,9 @@ def main() -> None:
         logger.info("Nada que rellenar.")
         # Exportamos una versión canónica/ordenada por consistencia
         numeric_cols = ["open", "high", "low", "close", "volume"]
-        df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors="coerce").astype("float64")
+        df[numeric_cols] = (
+            df[numeric_cols].apply(pd.to_numeric, errors="coerce").astype("float64")
+        )
         df.to_csv(out_path, index=True)
         logger.info(f"Guardado dataset (sin cambios) en: {out_path}")
         print(out_path)
@@ -173,7 +177,9 @@ def main() -> None:
         # Añadimos margen para evitar bordes incompletos en fetch
         since = (g_start - margin).to_pydatetime().replace(tzinfo=timezone.utc)
         until = (g_end + margin).to_pydatetime().replace(tzinfo=timezone.utc)
-        logger.info(f"[{i}/{len(ranges)}] Rellenando {g_start} → {g_end} (con margen {args.margin})")
+        logger.info(
+            f"[{i}/{len(ranges)}] Rellenando {g_start} → {g_end} (con margen {args.margin})"
+        )
 
         cfg = FetchConfig(
             symbol=args.symbol,
@@ -190,7 +196,9 @@ def main() -> None:
         # Validación rápida de columnas en cada parche
         miss_part = expected_cols.difference(set(part.columns))
         if miss_part:
-            logger.warning(f"Parche con columnas faltantes {sorted(miss_part)} en {part_path}; se omite.")
+            logger.warning(
+                f"Parche con columnas faltantes {sorted(miss_part)} en {part_path}; se omite."
+            )
             continue
 
         filled_parts.append(part)
@@ -208,7 +216,9 @@ def main() -> None:
 
     # Fuerza tipado float64 en columnas numéricas
     numeric_cols = ["open", "high", "low", "close", "volume"]
-    patch[numeric_cols] = patch[numeric_cols].apply(pd.to_numeric, errors="coerce").astype("float64")
+    patch[numeric_cols] = (
+        patch[numeric_cols].apply(pd.to_numeric, errors="coerce").astype("float64")
+    )
 
     # Re-chequeo de huecos sobre el nuevo rango completo
     new_full = pd.date_range(patch.index.min(), patch.index.max(), freq=freq, tz="UTC")

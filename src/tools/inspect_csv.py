@@ -59,8 +59,7 @@ def main() -> None:
     tf_ms = int(tf.total_seconds() * 1000)
     epoch_ms = int(epoch.timestamp() * 1000)
     aligned = all(
-        ((int(ts.timestamp() * 1000) - epoch_ms) % tf_ms) == 0
-        for ts in df.index
+        ((int(ts.timestamp() * 1000) - epoch_ms) % tf_ms) == 0 for ts in df.index
     )
     print(f"Alineación exacta al grid 15min: {'OK' if aligned else 'NO'}")
 

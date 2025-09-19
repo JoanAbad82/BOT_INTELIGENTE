@@ -68,7 +68,9 @@ def _validate_ohlc_sanity(df: pd.DataFrame) -> None:
     highs_ok = df["high"] >= df[["open", "close", "low"]].max(axis=1)
     vols_ok = df["volume"] >= 0
     if not (lows_ok.all() and highs_ok.all() and vols_ok.all()):
-        raise RuntimeError("Sanidad OHLC/volumen fallida (low/high/volume incoherentes).")
+        raise RuntimeError(
+            "Sanidad OHLC/volumen fallida (low/high/volume incoherentes)."
+        )
 
 
 # =======================
@@ -87,6 +89,7 @@ class FetchConfig:
 
 class MarketExchange:
     """Exchange solo para DATOS (LIVE). Forzamos spot y rate limit."""
+
     def __init__(self) -> None:
         self.ex = ccxt.binance(
             {
@@ -110,8 +113,12 @@ class MarketExchange:
     def has_symbol(self, s: str) -> bool:
         return s in self.ex.markets
 
-    def fetch_ohlcv(self, symbol: str, timeframe: str, since_ms: Optional[int], limit: int):
-        return self.ex.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=limit)
+    def fetch_ohlcv(
+        self, symbol: str, timeframe: str, since_ms: Optional[int], limit: int
+    ):
+        return self.ex.fetch_ohlcv(
+            symbol, timeframe=timeframe, since=since_ms, limit=limit
+        )
 
 
 # =======================
@@ -160,7 +167,9 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
         raise ValueError(f"Formato de símbolo inválido o no USDC: {cfg.symbol!r}")
     if not mkt.has_symbol(cfg.symbol):
         base = cfg.symbol.split("/")[0]
-        candidates = [s for s in mkt.symbols if s.startswith(base + "/") and s.endswith("/USDC")]
+        candidates = [
+            s for s in mkt.symbols if s.startswith(base + "/") and s.endswith("/USDC")
+        ]
         raise ValueError(
             f"El símbolo {cfg.symbol} no existe en Binance LIVE. Candidatos USDC: {candidates[:15]}"
         )
@@ -214,7 +223,9 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
 
     # Si el final existe, recreamos RAW desde cero (evita mezclar esquemas)
     if fpath.exists():
-        logger.info(f"Final existente; se recreará RAW y se reemplazará atómicamente: {fpath}")
+        logger.info(
+            f"Final existente; se recreará RAW y se reemplazará atómicamente: {fpath}"
+        )
         try:
             if raw_path.exists():
                 raw_path.unlink()
@@ -236,7 +247,9 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
             )
             calls += 1
             if not batch:
-                logger.warning("fetch_ohlcv vacío; avanzamos una vela para evitar bucle.")
+                logger.warning(
+                    "fetch_ohlcv vacío; avanzamos una vela para evitar bucle."
+                )
                 cursor += tf_ms
                 continue
 
@@ -245,35 +258,40 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
             if any(b <= a for a, b in zip(ts, ts[1:])):
                 raise RuntimeError("Timestamps no monótonos en batch OHLCV.")
             if any((t % tf_ms) != 0 for t in ts):
-                raise RuntimeError(f"Timestamps no alineados al grid de {cfg.timeframe} (tf_ms={tf_ms}).")
+                raise RuntimeError(
+                    f"Timestamps no alineados al grid de {cfg.timeframe} (tf_ms={tf_ms})."
+                )
 
             rows.extend(batch)
             cursor = int(ts[-1] + tf_ms)
 
             # Volcado incremental a RAW
             if len(rows) >= CHUNK_SIZE:
-                pd.DataFrame(rows, columns=["timestamp","open","high","low","close","volume"]).to_csv(
-                    raw_path, mode="a", header=not written_any, index=False
-                )
+                pd.DataFrame(
+                    rows,
+                    columns=["timestamp", "open", "high", "low", "close", "volume"],
+                ).to_csv(raw_path, mode="a", header=not written_any, index=False)
                 written_any = True
                 rows.clear()
 
             if calls % 10 == 0:
-                logger.info(f"Progreso: {(cursor - start_ms) // tf_ms} velas… {_iso_utc(cursor)}")
+                logger.info(
+                    f"Progreso: {(cursor - start_ms) // tf_ms} velas… {_iso_utc(cursor)}"
+                )
 
         # Cola pendiente → RAW
         if rows:
-            pd.DataFrame(rows, columns=["timestamp","open","high","low","close","volume"]).to_csv(
-                raw_path, mode="a", header=not written_any, index=False
-            )
+            pd.DataFrame(
+                rows, columns=["timestamp", "open", "high", "low", "close", "volume"]
+            ).to_csv(raw_path, mode="a", header=not written_any, index=False)
             written_any = True
             rows.clear()
 
     except KeyboardInterrupt:
         if rows:
-            pd.DataFrame(rows, columns=["timestamp","open","high","low","close","volume"]).to_csv(
-                raw_path, mode="a", header=not written_any, index=False
-            )
+            pd.DataFrame(
+                rows, columns=["timestamp", "open", "high", "low", "close", "volume"]
+            ).to_csv(raw_path, mode="a", header=not written_any, index=False)
         logger.warning("Descarga interrumpida. Parcial (RAW) escrito.")
         raise
 
@@ -286,7 +304,11 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
         raise RuntimeError(f"RAW en formato inesperado (sin 'timestamp'): {raw_path}")
 
     raw["datetime"] = pd.to_datetime(raw["timestamp"], unit="ms", utc=True)
-    raw = raw.drop_duplicates(subset=["datetime"]).sort_values("datetime").reset_index(drop=True)
+    raw = (
+        raw.drop_duplicates(subset=["datetime"])
+        .sort_values("datetime")
+        .reset_index(drop=True)
+    )
 
     final_df = _ensure_utc_index(raw)
     _validate_ohlc_sanity(final_df)  # 👈 NEW: sanidad antes de persistir
