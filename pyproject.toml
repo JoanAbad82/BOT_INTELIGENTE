@@ -1,0 +1,55 @@
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry]
+name = "bot_inteligente"
+version = "0.1.0"
+description = "Bot de trading XRP/USDC 15m"
+authors = ["Tu Nombre <tu.email@dominio>"]
+readme = "README.md"
+packages = [{ include = "src" }]
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+ccxt = "4.4.59"
+python-dotenv = "1.0.1"
+pandas = "2.2.2"
+loguru = "0.7.2"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.6.9"
+black = "^24.8.0"
+pytest = "^8.3.2"
+pytest-cov = "^5.0.0"
+mypy = "^1.11.1"
+pre-commit = "^4.0.1"
+types-python-dateutil = "*"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-select = ["I"]
+exclude = ["data", ".venv"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.poetry.scripts]
+fetch-ohlcv = "src.tools.fetch_ohlcv_cli:main"
+fill-gaps   = "src.tools.fill_gaps:main"
+bot-check   = "src.tools.check_dataset:main"

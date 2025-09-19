@@ -3,8 +3,11 @@
 # ==========================================
 from __future__ import annotations
 
-import sys
 import argparse
+import sys
+from pathlib import Path
+from typing import List, Tuple
+
 import pandas as pd
 
 EXPECTED_COLS = {"open", "high", "low", "close", "volume"}
@@ -28,7 +31,7 @@ def _ensure_utc_index(df: pd.DataFrame) -> pd.DataFrame:
     return df.sort_index()  # 👈 no deduplicamos aquí
 
 
-def _load_df(path: str) -> pd.DataFrame:
+def _load_df(path: Path) -> pd.DataFrame:
     """
     Carga el CSV con 'datetime' como índice y devuelve el DataFrame
     con índice normalizado a UTC. La validación de columnas se hace en main().
@@ -51,16 +54,51 @@ def _validate_ohlc_sanity(df: pd.DataFrame) -> None:
         raise ValueError("Sanidad OHLC/volumen fallida (low/high/volume incoherentes).")
 
 
+def _suggest_ohlcv_candidates(base_dir: Path, limit: int = 8) -> Tuple[List[Path], List[Path]]:
+    """
+    Devuelve 2 listas (RAW, FILLED) con hasta `limit` candidatos cada una
+    dentro de `base_dir`, ordenados por fecha de modificación descendente.
+    """
+    if not base_dir.exists():
+        return ([], [])
+
+    all_csv = sorted(base_dir.glob("*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
+    raw = [p for p in all_csv if not p.stem.endswith("_filled")][:limit]
+    filled = [p for p in all_csv if p.stem.endswith("_filled")][:limit]
+    return (raw, filled)
+
+
+def _print_missing_with_suggestions(requested: Path, base_dir: Path) -> None:
+    print(f"ERROR: no existe el archivo: {requested}")
+    # Sugerencias útiles en data/ohlcv
+    raw, filled = _suggest_ohlcv_candidates(base_dir)
+    if raw or filled:
+        print("\nSugerencias en data/ohlcv (más recientes primero):")
+        if raw:
+            print("  RAW (sin _filled):")
+            for p in raw:
+                ts = pd.to_datetime(p.stat().st_mtime, unit="s", utc=True)
+                print(f"   - {p}    (mod: {ts.isoformat()})")
+        if filled:
+            print("  FILLED (_filled):")
+            for p in filled:
+                ts = pd.to_datetime(p.stat().st_mtime, unit="s", utc=True)
+                print(f"   - {p}    (mod: {ts.isoformat()})")
+    else:
+        print("No se encontraron CSV en data/ohlcv/.")
+    print("\nPista: Si indicabas sólo el stem, prueba añadiendo la extensión .csv")
+    sys.exit(2)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
-        description="Valida un dataset OHLCV a una frecuencia fija (duplicados/huecos/completitud) y, opcionalmente, sanidad OHLC/volumen."
+        description=(
+            "Valida un dataset OHLCV a una frecuencia fija (duplicados/huecos/completitud) y, "
+            "opcionalmente, sanidad OHLC/volumen."
+        )
     )
-    ap.add_argument(
-        "csv_path", help="Ruta al CSV con columna 'datetime' (índice o columna)."
-    )
-    ap.add_argument(
-        "--freq", default="15min", help="Frecuencia esperada (p. ej. '15min', '1H')."
-    )
+    ap.add_argument("csv_path", help="Ruta al CSV con columna 'datetime' (índice o columna).")
+    ap.add_argument("--freq", default="15min", help="Frecuencia esperada (p. ej. '15min', '1H').")
     ap.add_argument(
         "--sanity-ohlc",
         action="store_true",
@@ -68,8 +106,26 @@ def main() -> None:
     )
     args = ap.parse_args()
 
+    # --- Normalización de freq: admite '15T' -> '15min' (evita FutureWarning)
+    import re
+
+    freq = args.freq
+    m = re.fullmatch(r"(\d+)T", str(freq).strip(), flags=re.IGNORECASE)
+    if m:
+        freq = f"{m.group(1)}min"
+
+    # --- Resolución de ruta y guardarraíles de UX (sugerencias si no existe)
+    in_path = Path(args.csv_path)
+    if not in_path.suffix:
+        # Si vino sin extensión, prueba con .csv
+        candidate = in_path.with_suffix(".csv")
+        if candidate.exists():
+            in_path = candidate
+    if not in_path.exists():
+        _print_missing_with_suggestions(in_path, base_dir=Path("data/ohlcv"))
+
     # Carga y normalización
-    df = _load_df(args.csv_path)
+    df = _load_df(in_path)
 
     # --- Validación de columnas esperadas (alineado con fill_gaps)
     missing = EXPECTED_COLS.difference(set(df.columns))
@@ -78,7 +134,7 @@ def main() -> None:
         sys.exit(1)
 
     # Construye el grid completo esperado y calcula huecos/duplicados
-    full = pd.date_range(df.index.min(), df.index.max(), freq=args.freq, tz="UTC")
+    full = pd.date_range(df.index.min(), df.index.max(), freq=freq, tz="UTC")
     expected, present = len(full), len(df)
     dups = int(df.index.duplicated().sum())  # se mide tras ordenar, sin deduplicar
     gaps = full.difference(df.index)
