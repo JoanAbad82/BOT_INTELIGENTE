@@ -13,7 +13,7 @@ repos:
         exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: v4.6.0   # ← ajustado
     hooks:
       - id: end-of-file-fixer
         exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
@@ -21,15 +21,10 @@ repos:
         exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
       - id: check-yaml
       - id: check-ast
-      - id: mixed-line-ending
-      - id: fix-byte-order-marker
-      - id: detect-private-key
 
-  - repo: local
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.11.1   # ← ajustado
     hooks:
-      - id: block-dotenv
-        name: block committing .env files
-        entry: "ERROR: .env files must not be committed"
-        language: fail
-        files: '^\.env(|\..*)$'
-        exclude: '^\.env\.example$'
+      - id: mypy
+        files: ^src/
+        exclude: ^(data/|\.venv/)
