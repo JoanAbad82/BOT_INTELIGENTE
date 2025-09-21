@@ -33,3 +33,6 @@ jobs:
 
       - name: Mypy
         run: mypy src
+
+      - name: Pytest
+        run: pytest -q
