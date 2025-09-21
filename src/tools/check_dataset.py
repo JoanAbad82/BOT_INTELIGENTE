@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import List, Tuple
 
 import pandas as pd
 
@@ -54,7 +53,7 @@ def _validate_ohlc_sanity(df: pd.DataFrame) -> None:
         raise ValueError("Sanidad OHLC/volumen fallida (low/high/volume incoherentes).")
 
 
-def _suggest_ohlcv_candidates(base_dir: Path, limit: int = 8) -> Tuple[List[Path], List[Path]]:
+def _suggest_ohlcv_candidates(base_dir: Path, limit: int = 8) -> tuple[list[Path], list[Path]]:
     """
     Devuelve 2 listas (RAW, FILLED) con hasta `limit` candidatos cada una
     dentro de `base_dir`, ordenados por fecha de modificación descendente.

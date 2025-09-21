@@ -4,9 +4,8 @@
 from __future__ import annotations
 
 import argparse
-from datetime import timezone
+from datetime import UTC
 from pathlib import Path
-from typing import List, Tuple
 
 import pandas as pd
 from loguru import logger
@@ -44,12 +43,12 @@ def _ensure_utc_index(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def group_gaps(gaps: pd.DatetimeIndex, freq: str) -> List[Tuple[pd.Timestamp, pd.Timestamp]]:
+def group_gaps(gaps: pd.DatetimeIndex, freq: str) -> list[tuple[pd.Timestamp, pd.Timestamp]]:
     """Agrupa huecos contiguos en rangos [start, end] según el paso `freq`."""
     if len(gaps) == 0:
         return []
 
-    ranges: List[Tuple[pd.Timestamp, pd.Timestamp]] = []
+    ranges: list[tuple[pd.Timestamp, pd.Timestamp]] = []
     start = gaps[0]
     prev = gaps[0]
     step = pd.Timedelta(freq)  # p. ej. '15min'
@@ -71,7 +70,10 @@ def group_gaps(gaps: pd.DatetimeIndex, freq: str) -> List[Tuple[pd.Timestamp, pd
 # ---------------------------
 def _parse_args() -> argparse.Namespace:
     ap = argparse.ArgumentParser(
-        description="Rellena huecos en un CSV OHLCV alineado al grid, descargando parches desde Binance (LIVE)."
+        description=(
+            "Rellena huecos en un CSV OHLCV alineado al grid, "
+            "descargando parches desde Binance (LIVE)."
+        )
     )
     ap.add_argument(
         "--csv",
@@ -81,7 +83,10 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--freq",
         default=DEFAULT_FREQ_PANDAS,
-        help=f"Frecuencia esperada del dataset (Pandas offset). Por defecto: {DEFAULT_FREQ_PANDAS}.",
+        help=(
+            "Frecuencia esperada del dataset (Pandas offset). "
+            f"Por defecto: {DEFAULT_FREQ_PANDAS}."
+        ),
     )
     ap.add_argument(
         "--symbol",
@@ -96,7 +101,10 @@ def _parse_args() -> argparse.Namespace:
     ap.add_argument(
         "--margin",
         default="75min",
-        help="Margen alrededor de cada hueco para descargar contexto (Pandas offset). Por defecto: 75min.",
+        help=(
+            "Margen alrededor de cada hueco para descargar contexto "
+            "(Pandas offset). Por defecto: 75min."
+        ),
     )
     ap.add_argument(
         "--outdir",
@@ -187,8 +195,8 @@ def main() -> None:
 
     for i, (g_start, g_end) in enumerate(ranges, 1):
         # Añadimos margen para evitar bordes incompletos en fetch
-        since = (g_start - margin).to_pydatetime().replace(tzinfo=timezone.utc)
-        until = (g_end + margin).to_pydatetime().replace(tzinfo=timezone.utc)
+        since = (g_start - margin).to_pydatetime().replace(tzinfo=UTC)
+        until = (g_end + margin).to_pydatetime().replace(tzinfo=UTC)
         logger.info(
             f"[{i}/{len(ranges)}] Rellenando {g_start} → {g_end} (con margen {args.margin})"
         )
@@ -236,7 +244,8 @@ def main() -> None:
     logger.info(f"Huecos restantes tras parcheo: {len(remaining)}")
     if len(remaining) > 0:
         logger.warning(
-            f"Persisten {len(remaining)} huecos tras el parcheo. Considera reintentar o ampliar margen."
+            f"Persisten {len(remaining)} huecos tras el parcheo. "
+            "Considera reintentar o ampliar margen."
         )
 
     patch.to_csv(out_path, index=True)

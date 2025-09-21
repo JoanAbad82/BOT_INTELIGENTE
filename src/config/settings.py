@@ -40,7 +40,8 @@ class Settings:
         sym = self.default_symbol.strip().upper()
         if not re.fullmatch(r"[A-Z0-9\-]+/USDC", sym):
             raise ValueError(
-                f"default_symbol inválido (formato BASE/USDC requerido y quote USDC): {self.default_symbol}"
+                "default_symbol inválido (formato BASE/USDC y quote USDC): "
+                f"{self.default_symbol}"
             )
         # Normalización a mayúsculas por consistencia
         object.__setattr__(self, "default_symbol", sym)

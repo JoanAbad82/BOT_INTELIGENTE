@@ -6,16 +6,17 @@ from __future__ import annotations
 
 import math
 import os
-import time
-from dataclasses import dataclass
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import List, Optional, Callable, Any
 import re
+import time
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 import ccxt
-from ccxt.base.errors import NetworkError, ExchangeError, RequestTimeout
 import pandas as pd
+from ccxt.base.errors import ExchangeError, NetworkError, RequestTimeout
 from loguru import logger
 
 from src.config.settings import settings
@@ -27,12 +28,12 @@ from src.utils.logging import setup_logging
 # =======================
 def _to_millis(dt: datetime) -> int:
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     return int(dt.timestamp() * 1000)
 
 
 def _iso_utc(ms: int) -> str:
-    return datetime.utcfromtimestamp(ms / 1000).replace(tzinfo=timezone.utc).isoformat()
+    return datetime.utcfromtimestamp(ms / 1000).replace(tzinfo=UTC).isoformat()
 
 
 def _ensure_utc_index(df: pd.DataFrame) -> pd.DataFrame:
@@ -78,8 +79,8 @@ def _validate_ohlc_sanity(df: pd.DataFrame) -> None:
 class FetchConfig:
     symbol: str = settings.default_symbol
     timeframe: str = "15m"
-    since: Optional[datetime] = None
-    until: Optional[datetime] = None
+    since: datetime | None = None
+    until: datetime | None = None
     outdir: Path = Path(__file__).resolve().parents[2] / "data" / "ohlcv"
     limit_per_call: int = 1000
     reload_markets: bool = True
@@ -105,13 +106,13 @@ class MarketExchange:
         self.ex.load_markets(reload=reload)
 
     @property
-    def symbols(self) -> List[str]:
+    def symbols(self) -> list[str]:
         return list(self.ex.symbols)
 
     def has_symbol(self, s: str) -> bool:
         return s in self.ex.markets
 
-    def fetch_ohlcv(self, symbol: str, timeframe: str, since_ms: Optional[int], limit: int):
+    def fetch_ohlcv(self, symbol: str, timeframe: str, since_ms: int | None, limit: int):
         return self.ex.fetch_ohlcv(symbol, timeframe=timeframe, since=since_ms, limit=limit)
 
 
@@ -177,7 +178,7 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
         raise ValueError(f"Timeframe con duración no positiva: {cfg.timeframe!r}")
 
     # Rango temporal
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(UTC).replace(microsecond=0)
     start_dt = cfg.since or (now - pd.Timedelta(days=30))
     end_dt = cfg.until or now
     if start_dt >= end_dt:
@@ -192,13 +193,15 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
     if start_ms % tf_ms != 0:
         aligned = start_ms + (tf_ms - (start_ms % tf_ms))
         logger.warning(
-            f"since no alineado a {cfg.timeframe} (tf_ms={tf_ms}); {_iso_utc(start_ms)} → {_iso_utc(aligned)}."
+            f"since no alineado a {cfg.timeframe} (tf_ms={tf_ms}); "
+            f"{_iso_utc(start_ms)} → {_iso_utc(aligned)}."
         )
         start_ms = aligned
     if end_ms % tf_ms != 0:
         aligned = end_ms - (end_ms % tf_ms)
         logger.warning(
-            f"until no alineado a {cfg.timeframe} (tf_ms={tf_ms}); {_iso_utc(end_ms)} → {_iso_utc(aligned)}."
+            f"until no alineado a {cfg.timeframe} (tf_ms={tf_ms}); "
+            f"{_iso_utc(end_ms)} → {_iso_utc(aligned)}."
         )
         end_ms = aligned
 
@@ -207,8 +210,8 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
     outdir.mkdir(parents=True, exist_ok=True)
     fname = (
         f"{cfg.symbol.replace('/','')}_{cfg.timeframe}_"
-        f"{datetime.fromtimestamp(start_ms/1000, tz=timezone.utc).date()}_"
-        f"{datetime.fromtimestamp(end_ms/1000, tz=timezone.utc).date()}.csv"
+        f"{datetime.fromtimestamp(start_ms/1000, tz=UTC).date()}_"
+        f"{datetime.fromtimestamp(end_ms/1000, tz=UTC).date()}.csv"
     )
     fpath = outdir / fname
     raw_path = fpath.with_suffix(".raw.csv")
@@ -222,7 +225,7 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
         except OSError:
             logger.warning(f"No se pudo eliminar RAW previo: {raw_path}")
 
-    rows: List[List[float]] = []
+    rows: list[list[float]] = []
     cursor = start_ms
     calls = 0
     written_any = raw_path.exists() and raw_path.stat().st_size > 0

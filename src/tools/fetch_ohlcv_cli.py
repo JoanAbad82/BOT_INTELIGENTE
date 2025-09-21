@@ -6,9 +6,8 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Optional
 
 from ccxt.base.errors import ExchangeError, NetworkError, RequestTimeout
 from loguru import logger
@@ -21,7 +20,7 @@ from src.utils.logging import setup_logging
 # ---------------------------
 # Utilidades de parsing
 # ---------------------------
-def _parse_iso_utc(s: Optional[str]) -> Optional[datetime]:
+def _parse_iso_utc(s: str | None) -> datetime | None:
     """
     Acepta:
       - 2025-09-01
@@ -44,9 +43,9 @@ def _parse_iso_utc(s: Optional[str]) -> Optional[datetime]:
     except Exception as e:
         raise argparse.ArgumentTypeError(f"Fecha inválida: {s!r} ({e})")
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     else:
-        dt = dt.astimezone(timezone.utc)
+        dt = dt.astimezone(UTC)
     return dt
 
 

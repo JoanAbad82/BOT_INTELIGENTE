@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 # ==================================
 # ========== FILE: src/main.py
 # ==================================
@@ -7,7 +6,6 @@ from __future__ import annotations
 import os
 import sys
 import time
-from typing import List
 
 import ccxt
 from ccxt.base.errors import (
@@ -85,7 +83,7 @@ def _validate_symbol_usdc(ex: ccxt.binance, symbol: str) -> bool:
         return True
 
     base = symbol.split("/")[0] if "/" in symbol else symbol
-    candidates: List[str] = [
+    candidates: list[str] = [
         s for s in ex.symbols if s.startswith(base + "/") and s.endswith("/USDC")
     ]
 
