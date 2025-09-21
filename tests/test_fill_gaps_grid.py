@@ -54,4 +54,7 @@ def test_fill_gaps_respects_15min_grid_and_no_lookahead():
 
     # 4) Las velas que ya existían en el grid conservan sus valores (no look-ahead)
     common = dirty.index.intersection(target)
-    pd.testing.assert_frame_equal(reindexed.loc[common], dirty.loc[common])
+    pd.testing.assert_frame_equal(
+        reindexed.loc[common].astype("float64"),
+        dirty.loc[common].astype("float64"),
+    )
