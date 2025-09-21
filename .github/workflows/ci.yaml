@@ -25,6 +25,17 @@ jobs:
       - name: Configure Poetry (no venv)
         run: poetry config virtualenvs.create false
 
+      - name: Cache Poetry and pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.cache/pypoetry
+            ~/.local/share/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
       - name: Install dependencies
         run: poetry install --no-interaction
 
