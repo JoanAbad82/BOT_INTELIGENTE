@@ -1,30 +1,39 @@
+# .pre-commit-config.yaml
+exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
+
 repos:
+  - repo: local
+    hooks:
+      - id: spdx-header-python
+        name: Ensure SPDX header in Python files
+        entry: python scripts/check_spdx.py
+        language: system
+        files: \.py$
+        stages: [pre-commit, pre-push]
+        # Descomenta SOLO si tu script no quiere rutas de archivos:
+        # pass_filenames: false
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.13.1
     hooks:
       - id: ruff
         args: [--fix]
-        exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
 
   - repo: https://github.com/psf/black
     rev: 25.9.0
     hooks:
       - id: black
-        exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0   # ← ajustado
+    rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
-        exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
       - id: trailing-whitespace
-        exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
       - id: check-yaml
       - id: check-ast
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.18.2   # ← ajustado
+    rev: v1.18.2
     hooks:
       - id: mypy
         files: ^src/
-        exclude: ^(data/|\.venv/)

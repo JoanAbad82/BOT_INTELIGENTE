@@ -1,3 +1,6 @@
+# README Badge → copia esta línea en tu README.md si quieres mostrarlo:
+# ![CI](https://github.com/JoanAbad82/BOT_INTELIGENTE/actions/workflows/ci.yml/badge.svg)
+
 name: CI
 
 on:
@@ -6,11 +9,15 @@ on:
   pull_request:
     branches: [ main, master ]
 
+permissions:
+  contents: read
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         python-version: [ "3.11", "3.12" ]
 
@@ -29,23 +36,32 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+          cache: pip
 
       - name: Install Poetry
         run: |
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install poetry
 
       - name: Configure Poetry (no venv)
         run: poetry config virtualenvs.create false
 
-      - name: Install deps
-        run: poetry install --no-interaction --no-ansi
+      - name: Cache Poetry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: poetry-${{ runner.os }}-${{ matrix.python-version }}-${{ hashFiles('**/poetry.lock') }}
+          restore-keys: |
+            poetry-${{ runner.os }}-${{ matrix.python-version }}-
+
+      - name: Install deps (main + dev)
+        run: poetry install --with dev --no-interaction --no-ansi
 
       # Lint & format
       - name: Ruff
         run: poetry run ruff check .
-      - run: poetry run black --check .
+      - name: Black (check)
+        run: poetry run black --check .
       - name: Mypy
         run: poetry run mypy src
 
