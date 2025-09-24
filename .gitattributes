@@ -1,3 +1,19 @@
-* text=auto eol=lf
+# Normaliza archivos de texto por defecto según la plataforma
+* text=auto
+
+# Python → LF en todos los sistemas
+*.py  text eol=lf
+
+# Shells / scripts de Windows
+*.sh  text eol=lf
 *.ps1 text eol=crlf
 *.bat text eol=crlf
+
+# Datos / binarios (sin normalización de EOL)
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.zip      binary
+*.pdf      binary
+*.parquet  binary
