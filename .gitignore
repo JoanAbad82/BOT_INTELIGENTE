@@ -13,3 +13,7 @@ data/
 .env
 .env.*
 !*.example
+SNAPSHOT-*/
+snapshot-*.zip
+snapshot-*.zip.sha256
+*.bundle
