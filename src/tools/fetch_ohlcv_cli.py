@@ -56,26 +56,37 @@ def parse_iso8601_dt(value: str | None) -> datetime | None:
 def validate_symbol_base_usdc(symbol: str) -> str:
     """
     En BOT_INTELIGENTE el estándar es BASE/USDC.
-    - Acepta letras/números en BASE.
-    - Rechaza USDT explícitamente.
-    - Rechaza BASE='USDC' (no tendría sentido).
+    Valida que:
+      - Haya exactamente un separador '/'.
+      - quote sea USDC (quote=USDC).
+      - USDT no aparezca ni en base ni en quote.
+      - base sea alfanumérica.
+    Devuelve 'BASE/USDC' normalizado (mayúsculas).
     """
     s = symbol.strip().upper()
-    if "/" not in s:
-        raise argparse.ArgumentTypeError("El símbolo debe ser del tipo BASE/USDC (con '/').")
+    if s.count("/") != 1:
+        raise argparse.ArgumentTypeError(
+            "El símbolo debe ser del tipo BASE/USDC (con un único '/')."
+        )
+
     base, quote = s.split("/", 1)
+
+    if not base or not quote:
+        raise argparse.ArgumentTypeError("Símbolo inválido: base o quote vacíos.")
+
+    # ── Lógica cristalina solicitada ────────────────────────────────────────────
     if quote != "USDC":
-        raise argparse.ArgumentTypeError(
-            "La cotización (quote) debe ser USDC (estándar del proyecto)."
-        )
-    if base in {"USDC", "USDT"}:
-        raise argparse.ArgumentTypeError(
-            "La base no puede ser USDC y no se admite USDT en el proyecto."
-        )
+        raise argparse.ArgumentTypeError("La divisa de cotización debe ser USDC (quote=USDC).")
+
+    if "USDT" in {base, quote}:
+        raise argparse.ArgumentTypeError("USDT no está admitido en este proyecto.")
+    # ────────────────────────────────────────────────────────────────────────────
+
     if not base.isalnum():
         raise argparse.ArgumentTypeError(
             "La base debe ser alfanumérica (sin espacios ni símbolos)."
         )
+
     return f"{base}/USDC"
 
 
@@ -83,7 +94,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="fetch_ohlcv_cli",
         description=(
-            "Descarga OHLCV desde el exchange vía CCXT y guarda " "CSV normalizado (UTC, 15m)."
+            "Descarga OHLCV desde el exchange vía CCXT y guarda CSV normalizado (UTC, 15m)."
         ),
     )
     p.add_argument(

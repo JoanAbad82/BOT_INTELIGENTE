@@ -1,6 +1,3 @@
-# .pre-commit-config.yaml
-exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
-
 repos:
   - repo: local
     hooks:
@@ -10,30 +7,35 @@ repos:
         language: system
         files: \.py$
         stages: [pre-commit, pre-push]
-        # Descomenta SOLO si tu script no quiere rutas de archivos:
-        # pass_filenames: false
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.13.1
     hooks:
       - id: ruff
         args: [--fix]
+        stages: [pre-commit]
 
   - repo: https://github.com/psf/black
     rev: 25.9.0
     hooks:
       - id: black
+        stages: [pre-commit]
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
       - id: end-of-file-fixer
+        stages: [pre-commit]
       - id: trailing-whitespace
+        stages: [pre-commit]
       - id: check-yaml
+        stages: [pre-commit]
       - id: check-ast
+        stages: [pre-commit]
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v1.18.2
     hooks:
       - id: mypy
         files: ^src/
+        stages: [pre-push]

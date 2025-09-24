@@ -1,5 +1,5 @@
-# README Badge → copia esta línea en tu README.md si quieres mostrarlo:
-# ![CI](https://github.com/JoanAbad82/BOT_INTELIGENTE/actions/workflows/ci.yml/badge.svg)
+# README Badge → pega esta línea en tu README.md si quieres mostrar el estado:
+# ![CI](https://github.com/JoanAbad82/BOT_INTELIGENTE/actions/workflows/ci.yaml/badge.svg)
 
 name: CI
 
@@ -12,9 +12,15 @@ on:
 permissions:
   contents: read
 
+# Evita ejecutar trabajos duplicados en el mismo ref
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     strategy:
       fail-fast: false
@@ -57,7 +63,7 @@ jobs:
       - name: Install deps (main + dev)
         run: poetry install --with dev --no-interaction --no-ansi
 
-      # Lint & format
+      # Lint & type-check
       - name: Ruff
         run: poetry run ruff check .
       - name: Black (check)

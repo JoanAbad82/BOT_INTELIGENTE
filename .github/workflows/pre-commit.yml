@@ -81,3 +81,7 @@ jobs:
 
       - name: Run pre-commit on all files
         run: pre-commit run --all-files
+
+      # ⬇️ Paso añadido: ejecutar también los hooks marcados con stages: [pre-push]
+      - name: Run pre-commit (push stage)
+        run: pre-commit run --hook-stage push --all-files
