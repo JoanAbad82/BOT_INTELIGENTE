@@ -8,6 +8,10 @@ version = "0.1.0"
 description = "Bot de trading XRP/USDC 15m"
 authors = ["Tu Nombre <tu.email@dominio>"]
 readme = "README.md"
+license = "MIT"
+classifiers = [
+  "License :: OSI Approved :: MIT License"
+]
 packages = [{ include = "src" }]
 
 [tool.poetry.dependencies]
