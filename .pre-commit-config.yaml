@@ -13,7 +13,7 @@ repos:
         exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
 
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0   # ← ajustado
+    rev: v6.0.0   # ← ajustado
     hooks:
       - id: end-of-file-fixer
         exclude: ^(data/|\.venv/|.*\.(csv|zip|gz|tar)$)
@@ -23,7 +23,7 @@ repos:
       - id: check-ast
 
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.1   # ← ajustado
+    rev: v1.18.2   # ← ajustado
     hooks:
       - id: mypy
         files: ^src/
