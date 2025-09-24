@@ -1,9 +1,12 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Joan Abad and contributors
 # ==========================================
 # ========== FILE: src/tools/fill_gaps.py
 # ==========================================
 from __future__ import annotations
 
 import argparse
+import re
 from datetime import UTC
 from pathlib import Path
 
@@ -128,12 +131,12 @@ def _parse_args() -> argparse.Namespace:
 # Lógica principal
 # ---------------------------
 def main() -> None:
-    setup_logging("BOT_INTELIGENTE")
+    # ✅ Usar keywords para no activar verbose accidentalmente
+    setup_logging(app_name="BOT_INTELIGENTE")
+
     args = _parse_args()
 
     # --- Normaliza freq para admitir '15T' -> '15min'
-    import re
-
     freq = args.freq
     m = re.fullmatch(r"(\d+)T", str(freq).strip(), flags=re.IGNORECASE)
     if m:
@@ -190,7 +193,7 @@ def main() -> None:
     ranges = group_gaps(gaps, freq)
     logger.info(f"Tramos contiguos: {len(ranges)}")
 
-    filled_parts = []
+    filled_parts: list[pd.DataFrame] = []
     margin = pd.Timedelta(args.margin)  # p. ej. '75min'
 
     for i, (g_start, g_end) in enumerate(ranges, 1):

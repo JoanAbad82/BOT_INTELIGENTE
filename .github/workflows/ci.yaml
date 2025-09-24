@@ -2,48 +2,65 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   pull_request:
+    branches: [ main, master ]
 
 jobs:
-  lint-and-typecheck:
+  build-test:
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: [ "3.11", "3.12" ]
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      # (Opcional) Escaneo de secretos
+      - name: Gitleaks (secret scan)
+        if: ${{ !cancelled() }}
+        uses: gitleaks/gitleaks-action@v2
+        with:
+          args: detect --source . --no-banner --redact
+
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
 
       - name: Install Poetry
-        uses: abatilo/actions-poetry@v3
-        with:
-          poetry-version: "2.1.3"
+        run: |
+          pip install --upgrade pip
+          pip install poetry
 
       - name: Configure Poetry (no venv)
         run: poetry config virtualenvs.create false
 
-      - name: Cache Poetry and pip
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pip
-            ~/.cache/pypoetry
-            ~/.local/share/pypoetry
-          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-poetry-
+      - name: Install deps
+        run: poetry install --no-interaction --no-ansi
 
-      - name: Install dependencies
-        run: poetry install --no-interaction
-
-      - name: Pre-commit (ruff/black/yaml/ast)
-        uses: pre-commit/action@v3.0.1
-
+      # Lint & format
+      - name: Ruff
+        run: poetry run ruff check .
+      - run: poetry run black --check .
       - name: Mypy
-        run: mypy src
+        run: poetry run mypy src
 
-      - name: Pytest
-        run: pytest -q
+      - name: Run tests
+        run: poetry run pytest -q
+
+      # ⬇️ Subida de artefactos (reportes y manifiestos)
+      - name: Upload reports & manifests
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-and-manifests-${{ matrix.python-version }}
+          path: |
+            reports/**
+            **/*.manifest.json
+            **/manifest.json
+            reports/filelist.csv
+          if-no-files-found: ignore

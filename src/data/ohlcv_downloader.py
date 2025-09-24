@@ -20,25 +20,33 @@ from ccxt.base.errors import ExchangeError, NetworkError, RequestTimeout
 from loguru import logger
 
 from src.config.settings import settings
-from src.utils.logging import setup_logging
+
+__all__ = [
+    "FetchConfig",
+    "download_ohlcv",  # -> Path
+    "read_ohlcv_csv",  # -> pd.DataFrame
+    "download_ohlcv_and_read",  # -> tuple[Path, pd.DataFrame]
+]
 
 
 # =======================
 # ==== Utilidades
 # =======================
 def _to_millis(dt: datetime) -> int:
+    """Convierte un datetime (naive → asume UTC) a milisegundos UNIX."""
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
     return int(dt.timestamp() * 1000)
 
 
 def _iso_utc(ms: int) -> str:
+    """Devuelve una representación ISO-8601 UTC para ms UNIX."""
     return datetime.utcfromtimestamp(ms / 1000).replace(tzinfo=UTC).isoformat()
 
 
 def _ensure_utc_index(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Normaliza DataFrame final: índice datetime UTC, orden y tipos float64.
+    Normaliza DataFrame final: índice datetime UTC, orden ascendente y tipos float64.
     Espera columnas: ['open','high','low','close','volume'] + 'datetime' (o 'timestamp').
     """
     if "timestamp" in df.columns and "datetime" not in df.columns:
@@ -56,15 +64,13 @@ def _ensure_utc_index(df: pd.DataFrame) -> pd.DataFrame:
     return df[cols].astype("float64")
 
 
-# --- NEW: sanity check OHLC/volume ---
 def _validate_ohlc_sanity(df: pd.DataFrame) -> None:
     """
-    Reglas mínimas:
+    Reglas mínimas de sanidad por vela:
       - low <= min(open, close, high)
       - high >= max(open, close, low)
       - volume >= 0
     """
-    # Nota: df ya está en float64 y con columnas garantizadas
     lows_ok = df["low"] <= df[["open", "close", "high"]].min(axis=1)
     highs_ok = df["high"] >= df[["open", "close", "low"]].max(axis=1)
     vols_ok = df["volume"] >= 0
@@ -87,7 +93,7 @@ class FetchConfig:
 
 
 class MarketExchange:
-    """Exchange solo para DATOS (LIVE). Forzamos spot y rate limit."""
+    """Exchange SOLO para DATOS (LIVE). Forzamos spot y rate limit."""
 
     def __init__(self) -> None:
         self.ex = ccxt.binance(
@@ -100,6 +106,7 @@ class MarketExchange:
         try:
             self.ex.set_sandbox_mode(False)
         except Exception:
+            # Algunos conectores no exponen sandbox o pueden fallar silenciosamente
             pass
 
     def load(self, reload: bool = True) -> None:
@@ -143,34 +150,41 @@ def _with_retries(fn: Callable[..., Any], *args, **kwargs):
 # =======================
 def download_ohlcv(cfg: FetchConfig) -> Path:
     """
-    Descarga OHLCV en formato RAW (timestamp,...), y crea un CSV FINAL normalizado:
-      - Validación de símbolo BASE/USDC y existencia.
-      - Timestamps monótonos y alineados al grid.
-      - Volcado RAW incremental a *.raw.csv
-      - Escritura final ATÓMICA a *.csv
-      - Ctrl+C seguro (parcial queda en RAW)
-    Devuelve Path del CSV FINAL.
+    Descarga OHLCV en formato RAW (timestamp, open, high, low, close, volume) y crea un
+    CSV FINAL normalizado (índice datetime UTC), con:
+      - Validación de símbolo BASE/USDC y existencia (nunca USDT).
+      - Timestamps monótonos y alineados al grid del timeframe.
+      - Volcado RAW incremental a *.raw.csv (resistente a Ctrl+C).
+      - Escritura final ATÓMICA a *.csv (y limpieza del RAW).
+
+    Returns
+    -------
+    Path
+        Ruta del CSV **final** normalizado.
+
+    Nota importante: la librería **no** configura logging. El *entrypoint* (CLI) debe hacerlo.
     """
-    setup_logging("BOT_INTELIGENTE")
+    # No llamar a setup_logging(...) aquí: la librería solo usa logging.
     logger.info(f"Descargando OHLCV | symbol={cfg.symbol} tf={cfg.timeframe}")
 
     mkt = MarketExchange()
     mkt.load(reload=cfg.reload_markets)
 
-    # Validación símbolo USDC + formato
+    # Validación símbolo USDC + formato BASE/USDC (sin USDT)
     if not re.fullmatch(r"[A-Z0-9\-]+/USDC", cfg.symbol):
         raise ValueError(f"Formato de símbolo inválido o no USDC: {cfg.symbol!r}")
     if not mkt.has_symbol(cfg.symbol):
         base = cfg.symbol.split("/")[0]
         candidates = [s for s in mkt.symbols if s.startswith(base + "/") and s.endswith("/USDC")]
         raise ValueError(
-            f"El símbolo {cfg.symbol} no existe en Binance LIVE. Candidatos USDC: {candidates[:15]}"
+            f"El símbolo {cfg.symbol} no existe en Binance LIVE. "
+            f"Candidatos USDC: {candidates[:15]}"
         )
 
     # Tamaño de vela en ms
     try:
         tf_ms = int(pd.Timedelta(cfg.timeframe).total_seconds() * 1000)
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         raise ValueError(
             f"Timeframe inválido: {cfg.timeframe!r}. Ejemplos: '1m','15m','1h','1d'."
         ) from e
@@ -206,7 +220,7 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
         end_ms = aligned
 
     # Rutas de salida
-    outdir = cfg.outdir
+    outdir = Path(cfg.outdir)  # robusto si llega str
     outdir.mkdir(parents=True, exist_ok=True)
     fname = (
         f"{cfg.symbol.replace('/','')}_{cfg.timeframe}_"
@@ -244,7 +258,7 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
                 cursor += tf_ms
                 continue
 
-            # Validaciones de integridad
+            # Validaciones de integridad por batch
             ts = [r[0] for r in batch]
             if any(b <= a for a, b in zip(ts, ts[1:])):
                 raise RuntimeError("Timestamps no monótonos en batch OHLCV.")
@@ -296,10 +310,10 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
     raw = raw.drop_duplicates(subset=["datetime"]).sort_values("datetime").reset_index(drop=True)
 
     final_df = _ensure_utc_index(raw)
-    _validate_ohlc_sanity(final_df)  # 👈 NEW: sanidad antes de persistir
+    _validate_ohlc_sanity(final_df)  # Sanidad antes de persistir
 
     tmp_path = fpath.with_suffix(".csv.tmp")
-    final_df.to_csv(tmp_path, index=True)
+    final_df.to_csv(tmp_path, index=True)  # índice = datetime (columna 'datetime' en CSV)
     os.replace(tmp_path, fpath)
 
     # Limpieza del RAW
@@ -310,3 +324,46 @@ def download_ohlcv(cfg: FetchConfig) -> Path:
 
     logger.info(f"Guardado {len(final_df):,} velas normalizadas en {fpath}")
     return fpath
+
+
+# =======================
+# ==== Helpers de lectura
+# =======================
+def read_ohlcv_csv(path: str | Path) -> pd.DataFrame:
+    """
+    Lee el CSV final normalizado (con índice 'datetime' UTC) y devuelve un DataFrame tipado.
+
+    Parameters
+    ----------
+    path : str | Path
+        Ruta al CSV final generado por `download_ohlcv`.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame con índice DatetimeIndex (UTC) y columnas float64:
+        ['open','high','low','close','volume'].
+    """
+    df = pd.read_csv(path, parse_dates=["datetime"])
+    if "datetime" not in df.columns:
+        raise RuntimeError("CSV sin columna 'datetime'. ¿Es el CSV final normalizado?")
+    df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+    df = df.set_index("datetime").sort_index()
+    cols = ["open", "high", "low", "close", "volume"]
+    return df[cols].astype("float64")
+
+
+def download_ohlcv_and_read(cfg: FetchConfig) -> tuple[Path, pd.DataFrame]:
+    """
+    Conveniencia para el CLI:
+    - Descarga y normaliza OHLCV (igual que `download_ohlcv`).
+    - Devuelve también el DataFrame ya cargado desde el CSV final.
+
+    Returns
+    -------
+    (Path, pd.DataFrame)
+        (ruta_csv_final, df_normalizado)
+    """
+    csv_path = download_ohlcv(cfg)
+    df = read_ohlcv_csv(csv_path)
+    return csv_path, df

@@ -1,23 +1,35 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Joan Abad and contributors
 # ==========================================
 # ========== FILE: src/tools/check_dataset.py
 # ==========================================
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
 EXPECTED_COLS = {"open", "high", "low", "close", "volume"}
+DEFAULT_FREQ_PANDAS = "15min"  # evitar FutureWarnings ("T" -> "min")
+
+
+class ExitCode:
+    OK = 0
+    BAD_INPUT = 2
+    CONTRACT_VIOLATION = 3
+    IO_ERROR = 4
+    UNKNOWN = 5
 
 
 def _ensure_utc_index(df: pd.DataFrame) -> pd.DataFrame:
     """
     Normaliza el índice datetime a UTC (tz-aware) y lo ordena ASC,
     sin eliminar duplicados (para poder reportarlos correctamente).
-    - Si el índice no es DatetimeIndex, intenta parsearlo.
-    - Si viene naive, se localiza a UTC; si trae tz, se convierte a UTC.
     """
     if not isinstance(df.index, pd.DatetimeIndex):
         df.index = pd.to_datetime(df.index, utc=True, errors="coerce")
@@ -30,138 +42,221 @@ def _ensure_utc_index(df: pd.DataFrame) -> pd.DataFrame:
     return df.sort_index()  # 👈 no deduplicamos aquí
 
 
-def _load_df(path: Path) -> pd.DataFrame:
-    """
-    Carga el CSV con 'datetime' como índice y devuelve el DataFrame
-    con índice normalizado a UTC. La validación de columnas se hace en main().
-    """
-    df = pd.read_csv(path, parse_dates=["datetime"], index_col="datetime")
-    return _ensure_utc_index(df)
+def _sha256_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
 
 
-def _validate_ohlc_sanity(df: pd.DataFrame) -> None:
-    """
-    Coherencia mínima:
-      - low <= min(open, close, high)
-      - high >= max(open, close, low)
-      - volume >= 0
-    """
-    lows_ok = df["low"] <= df[["open", "close", "high"]].min(axis=1)
-    highs_ok = df["high"] >= df[["open", "close", "low"]].max(axis=1)
-    vols_ok = df["volume"] >= 0
-    if not (lows_ok.all() and highs_ok.all() and vols_ok.all()):
-        raise ValueError("Sanidad OHLC/volumen fallida (low/high/volume incoherentes).")
+def _build_expected_grid(df: pd.DataFrame, freq: str) -> pd.DatetimeIndex:
+    return pd.date_range(df.index.min(), df.index.max(), freq=freq, tz="UTC")
 
 
-def _suggest_ohlcv_candidates(base_dir: Path, limit: int = 8) -> tuple[list[Path], list[Path]]:
-    """
-    Devuelve 2 listas (RAW, FILLED) con hasta `limit` candidatos cada una
-    dentro de `base_dir`, ordenados por fecha de modificación descendente.
-    """
-    if not base_dir.exists():
-        return ([], [])
-
-    all_csv = sorted(base_dir.glob("*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
-    raw = [p for p in all_csv if not p.stem.endswith("_filled")][:limit]
-    filled = [p for p in all_csv if p.stem.endswith("_filled")][:limit]
-    return (raw, filled)
-
-
-def _print_missing_with_suggestions(requested: Path, base_dir: Path) -> None:
-    print(f"ERROR: no existe el archivo: {requested}")
-    # Sugerencias útiles en data/ohlcv
-    raw, filled = _suggest_ohlcv_candidates(base_dir)
-    if raw or filled:
-        print("\nSugerencias en data/ohlcv (más recientes primero):")
-        if raw:
-            print("  RAW (sin _filled):")
-            for p in raw:
-                ts = pd.to_datetime(p.stat().st_mtime, unit="s", utc=True)
-                print(f"   - {p}    (mod: {ts.isoformat()})")
-        if filled:
-            print("  FILLED (_filled):")
-            for p in filled:
-                ts = pd.to_datetime(p.stat().st_mtime, unit="s", utc=True)
-                print(f"   - {p}    (mod: {ts.isoformat()})")
-    else:
-        print("No se encontraron CSV en data/ohlcv/.")
-    print("\nPista: Si indicabas sólo el stem, prueba añadiendo la extensión .csv")
-    sys.exit(2)
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(
-        description=(
-            "Valida un dataset OHLCV a una frecuencia fija (duplicados/huecos/completitud) y, "
-            "opcionalmente, sanidad OHLC/volumen."
-        )
+def _check_ohlc_sanity(df: pd.DataFrame) -> tuple[bool, dict[str, int]]:
+    problems = {
+        "negatives": int(((df[["open", "high", "low", "close", "volume"]] < 0).any(axis=1)).sum()),
+        "low_gt_high": int((df["low"] > df["high"]).sum()),
+        "mid_outside_hilo": int(
+            ~((df["low"] <= df["open"]) & (df["open"] <= df["high"])).sum()
+            + ~((df["low"] <= df["close"]) & (df["close"] <= df["high"])).sum()
+        ),
+        "nan_rows": int(df[["open", "high", "low", "close", "volume"]].isna().any(axis=1).sum()),
+    }
+    is_ok = (
+        problems["negatives"] == 0 and problems["low_gt_high"] == 0 and problems["nan_rows"] == 0
     )
-    ap.add_argument("csv_path", help="Ruta al CSV con columna 'datetime' (índice o columna).")
-    ap.add_argument("--freq", default="15min", help="Frecuencia esperada (p. ej. '15min', '1H').")
-    ap.add_argument(
+    return is_ok, problems
+
+
+def _calc_manifest(
+    csv_path: Path,
+    df: pd.DataFrame,
+    freq: str,
+    sanity_ohlc: bool,
+) -> dict[str, Any]:
+    exp_grid = _build_expected_grid(df, freq)
+    present = df.index
+
+    missing = exp_grid.difference(present)
+    dups_count = int(df.index.duplicated(keep=False).sum())
+    completeness = 0.0 if len(exp_grid) == 0 else 100.0 * (len(present.unique()) / len(exp_grid))
+
+    ohlc_ok, ohlc_details = (True, {}) if not sanity_ohlc else _check_ohlc_sanity(df)
+
+    manifest: dict[str, Any] = {
+        "file": str(csv_path),
+        "sha256": _sha256_file(csv_path),
+        "index": {
+            "tz": "UTC",
+            "start": present.min().isoformat(),
+            "end": present.max().isoformat(),
+            "freq": freq,
+            "expected_candles": len(exp_grid),
+            "present_candles": int(len(present)),
+            "unique_candles": int(len(present.unique())),
+            "completeness_pct": round(completeness, 6),
+            "duplicates": dups_count,
+            "missing": int(len(missing)),
+        },
+        "columns": {
+            "expected": sorted(EXPECTED_COLS),
+            "actual": sorted(map(str, df.columns)),
+            "dtypes": {k: str(df[k].dtype) for k in df.columns if k in EXPECTED_COLS},
+        },
+        "sanity": {
+            "checked": bool(sanity_ohlc),
+            "ok": bool(ohlc_ok),
+            "details": ohlc_details,
+        },
+        "generated_by": "check_dataset.py",
+        "version": "1.1.0",
+    }
+    return manifest
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="check_dataset",
+        description=(
+            "Valida un dataset OHLCV contra un contrato "
+            "(UTC index, rejilla fija, columnas, dtypes). "
+            "Puede emitir un manifiesto JSON con métricas reproducibles."
+        ),
+    )
+    parser.add_argument(
+        "csv_path",
+        help="Ruta al CSV a validar (índice datetime en la primera columna o columna 'timestamp').",
+    )
+    parser.add_argument(
+        "--freq",
+        default=DEFAULT_FREQ_PANDAS,
+        help='Frecuencia de rejilla Pandas (por defecto "15min"). Usa "min" y no "T".',
+    )
+    parser.add_argument(
         "--sanity-ohlc",
         action="store_true",
-        help="Valida coherencia OHLC/volumen (low/high/volume).",
+        help=(
+            "Activa chequeos básicos de sanidad (precios/volumen no negativos, "
+            "y que se cumpla low<=open/close<=high)."
+        ),
     )
-    args = ap.parse_args()
+    parser.add_argument(
+        "--manifest-out",
+        type=str,
+        default=None,
+        help="Si se especifica, escribe un JSON con el manifiesto en esta ruta.",
+    )
+    parser.add_argument(
+        "--strict-grid",
+        action="store_true",
+        help="Exige que todos los timestamps estén en la rejilla exacta (sin desalineados).",
+    )
 
-    # --- Normalización de freq: admite '15T' -> '15min' (evita FutureWarning)
-    import re
+    args = parser.parse_args(argv)
+    csv_path = Path(args.csv_path)
 
-    freq = args.freq
-    m = re.fullmatch(r"(\d+)T", str(freq).strip(), flags=re.IGNORECASE)
-    if m:
-        freq = f"{m.group(1)}min"
+    if not csv_path.exists():
+        print(f"[ERROR] No existe el archivo: {csv_path}", file=sys.stderr)
+        return ExitCode.BAD_INPUT
 
-    # --- Resolución de ruta y guardarraíles de UX (sugerencias si no existe)
-    in_path = Path(args.csv_path)
-    if not in_path.suffix:
-        # Si vino sin extensión, prueba con .csv
-        candidate = in_path.with_suffix(".csv")
-        if candidate.exists():
-            in_path = candidate
-    if not in_path.exists():
-        _print_missing_with_suggestions(in_path, base_dir=Path("data/ohlcv"))
+    try:
+        # Cargamos permitiendo índice en primera col o en 'timestamp'
+        # - Si la primera columna tiene aspecto de datetime, se usará como índice.
+        # - Si hay columna 'timestamp', la preferimos.
+        df = pd.read_csv(csv_path)
+        if "timestamp" in df.columns:
+            df["timestamp"] = pd.to_datetime(df["timestamp"], utc=True, errors="coerce")
+            df = df.set_index("timestamp")
+        else:
+            first_col = df.columns[0]
+            df[first_col] = pd.to_datetime(df[first_col], utc=True, errors="coerce")
+            df = df.set_index(first_col)
 
-    # Carga y normalización
-    df = _load_df(in_path)
+        # Normalizamos índice
+        df = _ensure_utc_index(df)
 
-    # --- Validación de columnas esperadas (alineado con fill_gaps)
-    missing = EXPECTED_COLS.difference(set(df.columns))
-    if missing:
-        print(f"ERROR: columnas faltantes en origen: {sorted(missing)}")
-        sys.exit(1)
+        # Columnas mínimas
+        missing_cols = EXPECTED_COLS.difference(df.columns)
+        if missing_cols:
+            print(f"[ERROR] Faltan columnas: {sorted(missing_cols)}", file=sys.stderr)
+            return ExitCode.CONTRACT_VIOLATION
 
-    # Construye el grid completo esperado y calcula huecos/duplicados
-    full = pd.date_range(df.index.min(), df.index.max(), freq=freq, tz="UTC")
-    expected, present = len(full), len(df)
-    dups = int(df.index.duplicated().sum())  # se mide tras ordenar, sin deduplicar
-    gaps = full.difference(df.index)
-    pct = 100.0 * present / expected if expected else 0.0
+        # Dtypes recomendados
+        for c in ["open", "high", "low", "close", "volume"]:
+            if not pd.api.types.is_numeric_dtype(df[c].dtype):
+                print(f"[ERROR] Columna no numérica: {c} -> {df[c].dtype}", file=sys.stderr)
+                return ExitCode.CONTRACT_VIOLATION
 
-    # Sanidad OHLC/volumen (opcional)
-    if args.sanity_ohlc:
-        try:
-            _validate_ohlc_sanity(df)
-        except ValueError as e:
-            print(f"ERROR: {e}")
-            sys.exit(1)
+        # Rejilla esperada y desalineados
+        exp_grid = _build_expected_grid(df, args.freq)
+        if getattr(args, "strict_grid", False):
+            # Comprobamos que TODOS los timestamps estén en la rejilla esperada
+            not_in_grid = ~df.index.isin(exp_grid)
+            if bool(not_in_grid.any()):
+                bad_count = int(not_in_grid.sum())
+                sample = df.index[not_in_grid][:5]
+                print(
+                    f"[ERROR] {bad_count} filas desalineadas con la rejilla {args.freq}. "
+                    f"Ejemplos: {list(map(lambda x: x.isoformat(), sample))}",
+                    file=sys.stderr,
+                )
+                return ExitCode.CONTRACT_VIOLATION
 
-    # Reporte y exit code
-    if dups > 0 or len(gaps) > 0:
-        first = gaps[0] if len(gaps) else None
-        last = gaps[-1] if len(gaps) else None
-        print(
-            f"ERROR: duplicados={dups}, huecos={len(gaps)}, "
-            f"completitud={present}/{expected}={pct:.2f}%"
+        # Métricas
+        duplicates = int(df.index.duplicated(keep=False).sum())
+        missing = int(len(exp_grid.difference(df.index)))
+        completeness = (
+            0.0 if len(exp_grid) == 0 else 100.0 * (len(df.index.unique()) / len(exp_grid))
         )
-        if first is not None:
-            print(f"Rango huecos aprox: {first} → {last}")
-        sys.exit(1)
 
-    print(f"OK: dataset limpio. Completitud={present}/{expected}={pct:.2f}%")
-    sys.exit(0)
+        # Sanidad OHLC (opcional)
+        ohlc_ok: bool = True
+        ohlc_details: dict[str, Any] = {}
+        if args.sanity_ohlc:
+            _ok, _details = _check_ohlc_sanity(df)
+            ohlc_ok = _ok
+            ohlc_details = _details
+            if not ohlc_ok:
+                print(
+                    f"[ERROR] Sanidad OHLC/volumen fallida: {ohlc_details}",
+                    file=sys.stderr,
+                )
+                # Permitimos emitir manifiesto para diagnóstico
+                # pero devolvemos código de contrato al final.
+
+        # Manifiesto (opcional)
+        if args.manifest_out:
+            manifest = _calc_manifest(csv_path, df, args.freq, args.sanity_ohlc)
+            outp = Path(args.manifest_out)
+            outp.parent.mkdir(parents=True, exist_ok=True)
+            outp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+            print(f"[OK] Manifiesto escrito en {outp}")
+
+        # Reporte simple a stdout
+        print(
+            "[SUMMARY] "
+            f"range={df.index.min().isoformat()} → {df.index.max().isoformat()} | "
+            f"freq={args.freq} | expected={len(exp_grid)} | unique={len(df.index.unique())} | "
+            f"dups={duplicates} | missing={missing} | completeness={completeness:.4f}%"
+        )
+
+        # Códigos de salida
+        if duplicates > 0 or missing > 0:
+            return ExitCode.CONTRACT_VIOLATION
+        if args.sanity_ohlc and not ohlc_ok:
+            return ExitCode.CONTRACT_VIOLATION
+
+        return ExitCode.OK
+
+    except FileNotFoundError:
+        print(f"[ERROR] No se pudo leer el archivo: {csv_path}", file=sys.stderr)
+        return ExitCode.IO_ERROR
+    except Exception as e:
+        print(f"[ERROR] Excepción no controlada: {type(e).__name__}: {e}", file=sys.stderr)
+        return ExitCode.UNKNOWN
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

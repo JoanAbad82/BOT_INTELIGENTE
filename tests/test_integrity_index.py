@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2025 Joan Abad and contributors
 import pandas as pd
 
 
